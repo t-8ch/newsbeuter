@@ -114,6 +114,7 @@ configcontainer::configcontainer()
 	config_data["newsblur-login"] = configdata("", configdata::STR);
 	config_data["newsblur-password"] = configdata("", configdata::STR);
 	config_data["newsblur-url"] = configdata("https://newsblur.com", configdata::STR);
+	config_data["newsblur-num-fetch-articles"] = configdata("20", configdata::INT);
 	config_data["delete-read-articles-on-quit"] = configdata("false", configdata::BOOL);
 	config_data["openbrowser-and-mark-jumps-to-next-unread"] = configdata("false", configdata::BOOL);
 	config_data["toggleitemread-jumps-to-next-unread"] = configdata("false", configdata::BOOL);

@@ -33,6 +33,7 @@ class newsblur_api : public remote_api {
 		feedmap known_feeds;
 		mutex handle_lock;
 		CURL * easyhandle;
+		unsigned int num_fetch_pages;
 };
 
 

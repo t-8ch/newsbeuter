@@ -11,6 +11,7 @@ namespace newsbeuter {
 newsblur_api::newsblur_api(configcontainer * c) : remote_api(c) {
 	auth_info = utils::strprintf("username=%s&password=%s", cfg->get_configvalue("newsblur-login").c_str(), cfg->get_configvalue("newsblur-password").c_str());
 	api_location = cfg->get_configvalue("newsblur-url");
+	num_fetch_pages = (cfg->get_configvalue_as_int("newsblur-num-fetch-articles") + 5) / 6;
 	easyhandle = curl_easy_init();
 	setup_handle();
 }
@@ -114,59 +115,64 @@ time_t parse_date(const char * raw) {
 rsspp::feed newsblur_api::fetch_feed(const std::string& id) {
 	rsspp::feed f = known_feeds[id];
 
-	json_object * query_result = query_api("/reader/feed/" + id, NULL);
+	for(unsigned int i = 1; i <= num_fetch_pages; i++) {
 
-	if (!query_result)
-		return f;
+		std::string page = utils::to_string(i);
 
-	json_object * stories = json_object_object_get(query_result, "stories");
+		json_object * query_result = query_api("/reader/feed/" + id + "?page=" + page, NULL);
 
-	if (!stories)
-		return f;
+		if (!query_result)
+			return f;
 
-	if (json_object_get_type(stories) != json_type_array) {
-		LOG(LOG_ERROR, "newsblur_api::fetch_feed: content is not an array");
-		return f;
-	}
+		json_object * stories = json_object_object_get(query_result, "stories");
 
-	struct array_list * items = json_object_get_array(stories);
-	int items_size = array_list_length(items);
-	LOG(LOG_DEBUG, "newsblur_api::fetch_feed: %d items", items_size);
+		if (!stories)
+			return f;
 
-	for (int i=0;i<items_size;i++) {
-		struct json_object * item_obj = (struct json_object *)array_list_get_idx(items, i);
-		const char * article_id = json_object_get_string(json_object_object_get(item_obj, "id"));
-		const char * title = json_object_get_string(json_object_object_get(item_obj, "story_title"));
-		const char * link = json_object_get_string(json_object_object_get(item_obj, "story_permalink"));
-		const char * content = json_object_get_string(json_object_object_get(item_obj, "story_content"));
-		const char * pub_date = json_object_get_string(json_object_object_get(item_obj, "story_date"));
-		bool read_status = json_object_get_int(json_object_object_get(item_obj, "read_status"));
-
-		rsspp::item item;
-
-		if (title)
-			item.title = title;
-
-		if (link)
-			item.link = link;
-
-		if (content)
-			item.content_encoded = content;
-
-		item.guid = id + ID_SEPARATOR + article_id;
-
-		if (read_status == 0) {
-			item.labels.push_back("newsblur:unread");
-		} else if (read_status == 1) {
-			item.labels.push_back("newsblur:read");
+		if (json_object_get_type(stories) != json_type_array) {
+			LOG(LOG_ERROR, "newsblur_api::fetch_feed: content is not an array");
+			return f;
 		}
 
-		item.pubDate_ts = parse_date(pub_date);
-		char rfc822_date[128];
-		strftime(rfc822_date, sizeof(rfc822_date), "%a, %d %b %Y %H:%M:%S %z", gmtime(&item.pubDate_ts));
-		item.pubDate = rfc822_date;
+		struct array_list * items = json_object_get_array(stories);
+		int items_size = array_list_length(items);
+		LOG(LOG_DEBUG, "newsblur_api::fetch_feed: %d items", items_size);
 
-		f.items.push_back(item);
+		for (int i=0;i<items_size;i++) {
+			struct json_object * item_obj = (struct json_object *)array_list_get_idx(items, i);
+			const char * article_id = json_object_get_string(json_object_object_get(item_obj, "id"));
+			const char * title = json_object_get_string(json_object_object_get(item_obj, "story_title"));
+			const char * link = json_object_get_string(json_object_object_get(item_obj, "story_permalink"));
+			const char * content = json_object_get_string(json_object_object_get(item_obj, "story_content"));
+			const char * pub_date = json_object_get_string(json_object_object_get(item_obj, "story_date"));
+			bool read_status = json_object_get_int(json_object_object_get(item_obj, "read_status"));
+
+			rsspp::item item;
+
+			if (title)
+				item.title = title;
+
+			if (link)
+				item.link = link;
+
+			if (content)
+				item.content_encoded = content;
+
+			item.guid = id + ID_SEPARATOR + article_id;
+
+			if (read_status == 0) {
+				item.labels.push_back("newsblur:unread");
+			} else if (read_status == 1) {
+				item.labels.push_back("newsblur:read");
+			}
+
+			item.pubDate_ts = parse_date(pub_date);
+			char rfc822_date[128];
+			strftime(rfc822_date, sizeof(rfc822_date), "%a, %d %b %Y %H:%M:%S %z", gmtime(&item.pubDate_ts));
+			item.pubDate = rfc822_date;
+
+			f.items.push_back(item);
+		}
 	}
 
 	std::sort(f.items.begin(), f.items.end(), sort_by_pubdate);
