@@ -27,12 +27,10 @@ class newsblur_api : public remote_api {
 		// TODO
 	private:
 		json_object * query_api(const std::string& url, const std::string* postdata);
-		virtual void setup_handle();
 		std::string auth_info;
 		std::string api_location;
+		char * cookie_cache;
 		feedmap known_feeds;
-		mutex handle_lock;
-		CURL * easyhandle;
 		unsigned int num_fetch_pages;
 };
 

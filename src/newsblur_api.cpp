@@ -12,12 +12,25 @@ newsblur_api::newsblur_api(configcontainer * c) : remote_api(c) {
 	auth_info = utils::strprintf("username=%s&password=%s", cfg->get_configvalue("newsblur-login").c_str(), cfg->get_configvalue("newsblur-password").c_str());
 	api_location = cfg->get_configvalue("newsblur-url");
 	num_fetch_pages = (cfg->get_configvalue_as_int("newsblur-num-fetch-articles") + 5) / 6;
-	easyhandle = curl_easy_init();
-	setup_handle();
+
+	cookie_cache = (char *)cfg->get_configvalue("cookie-cache").c_str();
+
+	LOG(LOG_INFO, "foo %s", cookie_cache);
+
+	if(strcmp(cookie_cache, "") == 0) {
+		// TODO XDG_RUNTIME_DIR?
+		cookie_cache = tempnam(NULL, NULL);
+		if(cookie_cache == NULL) {
+			LOG(LOG_WARN, "newsblur_api::newsblur_api: could not generate temporary cookie-cache, login won't work");
+		} else {
+			LOG(LOG_INFO, "newsblur_api::newsblur_api: using %s as temporary cookie-cache", cookie_cache);
+			cfg->set_configvalue("cookie-cache", cookie_cache);
+			free(cookie_cache);
+		}
+	}
 }
 
 newsblur_api::~newsblur_api() {
-	curl_easy_cleanup(easyhandle);
 }
 
 bool newsblur_api::authenticate() {
@@ -26,7 +39,9 @@ bool newsblur_api::authenticate() {
 
 	response = newsblur_api::query_api("/api/login", &auth_info);
 	status = json_object_object_get(response, "authenticated");
-	return json_object_get_boolean(status);
+	bool result = json_object_get_boolean(status);
+	LOG(LOG_INFO, "newsblur_api::authenticate: authentication resulted in %u, cached in %s", result, cfg->get_configvalue("cookie-cache").c_str());
+	return result;
 }
 
 std::vector<tagged_feedurl> newsblur_api::get_subscribed_urls() {
@@ -115,6 +130,8 @@ time_t parse_date(const char * raw) {
 rsspp::feed newsblur_api::fetch_feed(const std::string& id) {
 	rsspp::feed f = known_feeds[id];
 
+	LOG(LOG_INFO, "newsblur_api::fetch_feed: about to fetch %u pages of feed %s", num_fetch_pages, id.c_str());
+
 	for(unsigned int i = 1; i <= num_fetch_pages; i++) {
 
 		std::string page = utils::to_string(i);
@@ -126,8 +143,10 @@ rsspp::feed newsblur_api::fetch_feed(const std::string& id) {
 
 		json_object * stories = json_object_object_get(query_result, "stories");
 
-		if (!stories)
+		if (!stories) {
+			LOG(LOG_ERROR, "newsblur_api::fetch_feed: request returned no stories");
 			return f;
+		}
 
 		if (json_object_get_type(stories) != json_type_array) {
 			LOG(LOG_ERROR, "newsblur_api::fetch_feed: content is not an array");
@@ -179,43 +198,15 @@ rsspp::feed newsblur_api::fetch_feed(const std::string& id) {
 	return f;
 }
 
-void newsblur_api::setup_handle(void) {
-	utils::set_common_curl_options(easyhandle, cfg);
-	// custom
-	curl_easy_setopt(easyhandle, CURLOPT_SSL_VERIFYPEER, 1);
-	curl_easy_setopt(easyhandle, CURLOPT_COOKIEFILE, "");
-
-}
-
-
-static size_t my_write_data(void *buffer, size_t size, size_t nmemb, void *userp) {
-	std::string * pbuf = static_cast<std::string *>(userp);
-	pbuf->append(static_cast<const char *>(buffer), size * nmemb);
-	return size * nmemb;
-}
-
 json_object * newsblur_api::query_api(const std::string& endpoint, const std::string* postdata) {
-	std::string buf;
 
-	handle_lock.lock();
+	const char * url = (api_location + endpoint).c_str();
+	std::string data = utils::retrieve_url(url, cfg, NULL, postdata);
 
-	curl_easy_setopt(easyhandle, CURLOPT_URL, (api_location + endpoint).c_str());
-	curl_easy_setopt(easyhandle, CURLOPT_WRITEFUNCTION, my_write_data);
-	curl_easy_setopt(easyhandle, CURLOPT_WRITEDATA, &buf);
-
-	if(postdata != NULL) {
-		curl_easy_setopt(easyhandle, CURLOPT_POST, 1);
-		curl_easy_setopt(easyhandle, CURLOPT_POSTFIELDS, postdata->c_str());
-		LOG(LOG_INFO, "newsblur_api::query_api(%s)[%s]: %s", endpoint.c_str(), postdata->c_str(), buf.c_str());
-	} else {
-		curl_easy_setopt(easyhandle, CURLOPT_POST, 0);
-		LOG(LOG_INFO, "newsblur_api::query_api(%s)[-]: %s", endpoint.c_str(), buf.c_str());
-	}
-
-	curl_easy_perform(easyhandle);
-	handle_lock.unlock();
-
-	return json_tokener_parse(buf.c_str());
+	json_object * result =  json_tokener_parse(data.c_str());
+	if(!result)
+		LOG(LOG_WARN, "newsblur_api::query_api: request to %s failed", url);
+	return result;
 }
 
 }
