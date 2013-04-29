@@ -206,14 +206,9 @@ json_object * newsblur_api::query_api(const std::string& endpoint, const std::st
 	if(postdata != NULL) {
 		curl_easy_setopt(easyhandle, CURLOPT_POST, 1);
 		curl_easy_setopt(easyhandle, CURLOPT_POSTFIELDS, postdata->c_str());
+		LOG(LOG_INFO, "newsblur_api::query_api(%s)[%s]: %s", endpoint.c_str(), postdata->c_str(), buf.c_str());
 	} else {
 		curl_easy_setopt(easyhandle, CURLOPT_POST, 0);
-	}
-
-	if(postdata != NULL) {
-		LOG(LOG_INFO, "newsblur_api::query_api(%s)[%s]: %s", endpoint.c_str(), postdata->c_str(), buf.c_str());
-	}
-	else {
 		LOG(LOG_INFO, "newsblur_api::query_api(%s)[-]: %s", endpoint.c_str(), buf.c_str());
 	}
 
