@@ -15,8 +15,6 @@ newsblur_api::newsblur_api(configcontainer * c) : remote_api(c) {
 
 	cookie_cache = (char *)cfg->get_configvalue("cookie-cache").c_str();
 
-	LOG(LOG_INFO, "foo %s", cookie_cache);
-
 	if(strcmp(cookie_cache, "") == 0) {
 		// TODO XDG_RUNTIME_DIR?
 		cookie_cache = tempnam(NULL, NULL);
@@ -95,14 +93,11 @@ bool newsblur_api::mark_article_read(const std::string& guid, bool read) {
 	std::string article_id = guid.substr(separator + sizeof(ID_SEPARATOR) - 1);
 
 	std::string post_data = "feed_id=" + feed_id + "&" + "story_id=" + article_id;
-	LOG(LOG_ERROR, guid.c_str());
-	LOG(LOG_ERROR, post_data.c_str());
 	if(read) {
 		endpoint = "/reader/mark_story_as_read";
 	} else {
 		endpoint = "/reader/mark_story_as_unread";
 	}
-	LOG(LOG_ERROR, guid.c_str());
 
 	query_api(endpoint, &post_data);
 	return true;
